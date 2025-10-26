@@ -63,7 +63,7 @@ const handleBooking = async () => {
 
     if (response.status === 201) {
       setIsOpen(false);
-      navigate('/my-bookings?success=true');
+      navigate('/my-account/bookings?success=true');
     }
 
   } catch (err) {

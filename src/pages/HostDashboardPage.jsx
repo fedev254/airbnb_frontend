@@ -2,16 +2,20 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/apiService'; // ✅ Use the pre-configured axios instance
+import api from '../services/apiService';
+import RevenueChart from '../components/RevenueChart';
 
 export default function HostDashboardPage() {
-  // --- All hooks are now at the top level ---
   const { user } = useAuth();
+
   const [properties, setProperties] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const [error, setError] = useState(null);
 
-  // --- useEffect handles data fetching safely ---
+  // 🔹 Fetch host properties
   useEffect(() => {
     const fetchHostProperties = async () => {
       if (!user) {
@@ -53,7 +57,44 @@ export default function HostDashboardPage() {
     fetchHostProperties();
   }, [user]);
 
-  // --- Conditional rendering AFTER hooks ---
+  // 🔹 Fetch host bookings
+  useEffect(() => {
+    if (user) {
+      const fetchHostBookings = async () => {
+        try {
+          const response = await api.get('/host/dashboard/my_bookings/');
+          setBookings(response.data.results || response.data);
+        } catch (err) {
+          console.error("Failed to fetch host bookings:", err);
+        }
+      };
+      fetchHostBookings();
+    }
+  }, [user]);
+
+  // 🔹 Fetch analytics/stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+      setLoadingStats(true);
+      try {
+        const response = await api.get('/host/analytics/');
+        setStats(response.data);
+      } catch (err) {
+        console.error("Failed to fetch stats", err);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+    fetchStats();
+  }, [user]);
+
+  // Derived values from bookings
+  const activeBookings = bookings.filter(b => b.status === 'confirmed').length;
+  const totalRevenue = bookings
+    .filter(b => b.status === 'confirmed')
+    .reduce((sum, b) => sum + parseFloat(b.total_price), 0);
+
   if (loading) {
     return (
       <div className="py-12">
@@ -83,7 +124,6 @@ export default function HostDashboardPage() {
     );
   }
 
-  // --- Main Render ---
   return (
     <div className="py-12">
       <div className="container mx-auto px-4">
@@ -95,29 +135,49 @@ export default function HostDashboardPage() {
           </p>
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* --- UPDATED Quick Stats --- */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-lg p-6 text-center">
             <p className="text-gray-500 text-sm uppercase font-semibold">
               Total Properties
             </p>
             <p className="text-4xl font-bold text-blue-600 mt-2">
-              {properties.length}
+              {loadingStats ? '...' : stats?.total_properties ?? properties.length}
             </p>
           </div>
+
           <div className="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-lg p-6 text-center">
             <p className="text-gray-500 text-sm uppercase font-semibold">
               Active Bookings
             </p>
-            <p className="text-4xl font-bold text-green-600 mt-2">0</p>
+            <p className="text-4xl font-bold text-green-600 mt-2">
+              {loadingStats ? '...' : stats?.active_bookings_count ?? activeBookings}
+            </p>
           </div>
+
           <div className="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-lg p-6 text-center">
             <p className="text-gray-500 text-sm uppercase font-semibold">
               Total Revenue
             </p>
-            <p className="text-4xl font-bold text-purple-600 mt-2">KES 0</p>
+            <p className="text-4xl font-bold text-purple-600 mt-2">
+              KES{' '}
+              {loadingStats
+                ? '...'
+                : (stats?.total_revenue ?? totalRevenue).toLocaleString()}
+            </p>
+          </div>
+
+          <div className="bg-white bg-opacity-90 backdrop-blur-sm rounded-lg shadow-lg p-6 text-center">
+            <p className="text-gray-500 text-sm uppercase font-semibold">
+              Average Rating
+            </p>
+            <p className="text-4xl font-bold text-yellow-500 mt-2">
+              {loadingStats ? '...' : `${stats?.average_rating ?? 0} ★`}
+            </p>
           </div>
         </div>
+
+        
 
         {/* My Properties Section */}
         <div className="bg-white bg-opacity-90 backdrop-blur-sm rounded-xl shadow-lg p-6">
@@ -184,6 +244,18 @@ export default function HostDashboardPage() {
             </div>
           )}
         </div>
+        {/* --- ADD CHART SECTION --- */}
+        <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-lg p-6 mb-8">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4">Monthly Revenue Overview</h2>
+                    <div className="h-96"> {/* Give the chart container a fixed height */}
+                      {loadingStats ? (
+                        <p>Loading chart data...</p>
+                      ) : (
+                        // 👇 2. Render the chart, passing in the data from our API
+                        <RevenueChart chartData={stats?.monthly_revenue_chart} />
+                      )}
+                    </div>
+                </div>
       </div>
     </div>
   );

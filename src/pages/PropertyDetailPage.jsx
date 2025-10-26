@@ -2,15 +2,19 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/apiService'; // 👈 use central api instance
+import api from '../services/apiService';
 import localPlaceholder from '../assets/interior4.png';
 import BookingModal from '../components/BookingModal';
+import ReviewList from '../components/ReviewList';
+import { DayPicker } from 'react-day-picker';
+import 'react-day-picker/dist/style.css';
 
 // --- Reusable UnitCard Component ---
 function UnitCard({ unit, property, onBookNowClick }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const { user } = useAuth(); // 👈 Access logged-in user
+  const { user } = useAuth();
   const images = unit.images && unit.images.length > 0 ? unit.images : [];
+  const [unavailableDates, setUnavailableDates] = useState([]); // ✅ State for booked dates
 
   // Rotate images every 4s
   useEffect(() => {
@@ -22,11 +26,27 @@ function UnitCard({ unit, property, onBookNowClick }) {
     }
   }, [images.length]);
 
-  // 👇 Hide Book button if the logged-in user owns this property
+  // ✅ Fetch unavailable dates for this unit
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      try {
+        const response = await api.get(`/units/${unit.id}/availability/`);
+        // Convert string dates to Date objects
+        const bookedDates = response.data.map(dateStr => new Date(dateStr));
+        setUnavailableDates(bookedDates);
+      } catch (error) {
+        console.error('Failed to fetch availability:', error);
+      }
+    };
+    fetchAvailability();
+  }, [unit.id]);
+
+  // Hide "Book Now" if the logged-in user owns this property
   const isOwner = user && user.user_id === property.owner.id;
 
   return (
     <div className="bg-white rounded-lg shadow-xl overflow-hidden md:flex">
+      {/* Image Carousel Section */}
       <div className="md:w-1/3 h-64 md:h-auto relative">
         {images.length > 0 ? (
           images.map((image, index) => (
@@ -44,12 +64,15 @@ function UnitCard({ unit, property, onBookNowClick }) {
         )}
       </div>
 
+      {/* Details Section */}
       <div className="p-6 flex flex-col justify-between w-full md:w-2/3">
         <div>
           <h3 className="text-2xl font-bold text-gray-800">{unit.unit_name_or_number}</h3>
           <p className="mt-2 text-gray-600">
             {unit.bedrooms} Bedroom(s) &middot; {unit.bathrooms} Bathroom(s) &middot; Max Guests: {unit.max_guests}
           </p>
+          
+          {/* Amenities */}
           <div className="mt-4">
             <h4 className="font-semibold text-gray-700">Amenities:</h4>
             <ul className="list-disc list-inside text-gray-600 mt-2 space-y-1">
@@ -58,10 +81,38 @@ function UnitCard({ unit, property, onBookNowClick }) {
               ))}
             </ul>
           </div>
+
+          {/* ✅ NEW: Availability Calendar */}
+          <div className="mt-6 border-t pt-4">
+            <h4 className="font-semibold text-gray-700 mb-3">Availability Calendar</h4>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <DayPicker
+                mode="default"
+                disabled={unavailableDates}
+                modifiersClassNames={{
+                  disabled: 'text-red-500 line-through opacity-50'
+                }}
+                numberOfMonths={1}
+                showOutsideDays
+                className="text-sm"
+                styles={{
+                  caption: { color: '#1f2937', fontWeight: 'bold' },
+                  day: { fontSize: '0.875rem' }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                <span className="inline-block w-3 h-3 bg-red-100 border border-red-300 rounded mr-1"></span>
+                Unavailable dates
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-6 md:flex md:justify-between md:items-center">
-          <p className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">KES {unit.price_per_night} / night</p>
+        {/* Price and Book Button */}
+        <div className="mt-6 md:flex md:justify-between md:items-center border-t pt-4">
+          <p className="text-2xl font-bold text-gray-900 mb-4 md:mb-0">
+            KES {unit.price_per_night?.toLocaleString()} / night
+          </p>
 
           {isOwner ? (
             <span className="text-gray-500 italic">This is your property</span>
@@ -79,22 +130,22 @@ function UnitCard({ unit, property, onBookNowClick }) {
   );
 }
 
-// --- Main Page Component ---
+// --- Main Property Detail Page ---
 export default function PropertyDetailPage() {
   const { propertyId } = useParams();
-  const { user } = useAuth(); // Get user state from AuthContext
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [property, setProperty] = useState(null);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Modal state
+  // Booking modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState(null);
 
-  // "Book Now" handler
   const handleBookNowClick = (unit) => {
     if (user) {
       setSelectedUnit(unit);
@@ -104,23 +155,26 @@ export default function PropertyDetailPage() {
     }
   };
 
+  // Fetch property + reviews together
   useEffect(() => {
-    setLoading(true);
-    api
-      .get(`/properties/${propertyId}/`) // 👈 use central api instance
-      .then((response) => {
-        setProperty(response.data);
-        setError(null);
-      })
-      .catch((err) => {
-        if (err.response && err.response.status === 404) {
-          setError(`Property with ID ${propertyId} could not be found.`);
-        } else {
-          setError('An error occurred while fetching property details.');
-        }
-        console.error('API Error fetching property details:', err);
-      })
-      .finally(() => setLoading(false));
+    const fetchDetails = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [propertyRes, reviewsRes] = await Promise.all([
+          api.get(`/properties/${propertyId}/`),
+          api.get(`/properties/${propertyId}/reviews/`),
+        ]);
+        setProperty(propertyRes.data);
+        setReviews(reviewsRes.data.results || reviewsRes.data);
+      } catch (err) {
+        console.error('Detail page fetch error:', err);
+        setError('Failed to load property details or reviews.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDetails();
   }, [propertyId]);
 
   if (loading) return <p className="text-center text-white text-xl mt-10">Loading details...</p>;
@@ -131,6 +185,8 @@ export default function PropertyDetailPage() {
     <div className="py-12">
       <div className="container mx-auto px-4">
         <div className="bg-white bg-opacity-90 backdrop-blur-sm rounded-xl shadow-lg p-6 md:p-8">
+          
+          {/* Property Header */}
           <div className="mb-8">
             <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900">{property.title}</h1>
             <p className="mt-2 text-lg text-gray-600">
@@ -138,10 +194,12 @@ export default function PropertyDetailPage() {
             </p>
           </div>
 
+          {/* Property Description */}
           <div className="prose lg:prose-xl max-w-none mb-12">
             <p className="text-gray-700">{property.description}</p>
           </div>
 
+          {/* Units Section */}
           <div>
             <h2 className="text-3xl font-bold mb-6 text-gray-800 border-b pb-2">Available Units</h2>
             <div className="space-y-8">
@@ -150,7 +208,7 @@ export default function PropertyDetailPage() {
                   <UnitCard
                     key={unit.id}
                     unit={unit}
-                    property={property} // 👈 Pass the whole property down
+                    property={property}
                     onBookNowClick={handleBookNowClick}
                   />
                 ))
@@ -158,6 +216,12 @@ export default function PropertyDetailPage() {
                 <p className="text-gray-600">No units are currently available for this property.</p>
               )}
             </div>
+          </div>
+
+          {/* Reviews Section */}
+          <div className="border-t pt-8 mt-10">
+            <h2 className="text-3xl font-bold mb-6 text-gray-800">Guest Reviews</h2>
+            <ReviewList reviews={reviews} />
           </div>
         </div>
       </div>

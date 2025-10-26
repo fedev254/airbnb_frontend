@@ -1,34 +1,58 @@
-// In src/components/PropertyCard.jsx
+// src/components/PropertyCard.jsx
 
-import React from 'react';
+import React, { useEffect, useState } from "react";
 
 // The base URL for your Django media files during development
-const MEDIA_BASE_URL = 'http://127.0.0.1:8000';
+const MEDIA_BASE_URL = "http://127.0.0.1:8000";
 
 function PropertyCard({ property }) {
-  // Find the first unit that has at least one image to use as the card's thumbnail
-  const firstUnitWithImage = property.units.find(unit => unit.images && unit.images.length > 0);
-  
-  // Construct the full image URL by combining the base URL and the relative path from the API
-  // Also provide a fallback placeholder image if no units have photos
-  const imageUrl = firstUnitWithImage 
-    ? `${MEDIA_BASE_URL}${firstUnitWithImage.images[0].image}`
-    : 'https://via.placeholder.com/400x250.png?text=No+Image+Available';
+  // Collect all available images from units or property.images
+  const allImages = [];
+
+  // 1️⃣ If property.images exist (direct property images)
+  if (property.images && property.images.length > 0) {
+    property.images.forEach((img) => allImages.push(`${MEDIA_BASE_URL}${img.image}`));
+  }
+
+  // 2️⃣ Otherwise, fallback to unit images
+  if (allImages.length === 0 && property.units) {
+    property.units.forEach((unit) => {
+      if (unit.images && unit.images.length > 0) {
+        unit.images.forEach((img) => allImages.push(`${MEDIA_BASE_URL}${img.image}`));
+      }
+    });
+  }
+
+  // 3️⃣ Final fallback placeholder
+  if (allImages.length === 0) {
+    allImages.push("https://via.placeholder.com/400x250.png?text=No+Image+Available");
+  }
+
+  // 4️⃣ Handle image rotation
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (allImages.length > 1) {
+      const interval = setInterval(() => {
+        setCurrentIndex((prev) => (prev + 1) % allImages.length);
+      }, 4000); // ⏱ 4 seconds
+      return () => clearInterval(interval);
+    }
+  }, [allImages]);
 
   return (
-    // We can wrap this card in a link later to go to the detail page
     <div className="bg-white rounded-lg shadow-lg overflow-hidden transform hover:-translate-y-1 transition-transform duration-300">
-      <img 
-        src={imageUrl} 
+      <img
+        src={allImages[currentIndex]}
         alt={`View of ${property.title}`}
-        className="w-full h-56 object-cover" // A slightly taller image container
+        className="w-full h-56 object-cover"
       />
-      
+
       <div className="p-4">
         <h3 className="text-xl font-bold text-gray-800 truncate">{property.title}</h3>
-        <p className="text-gray-600 mt-1">{property.city}, {property.country}</p>
-        
-        {/* We can add more info here later, like starting price */}
+        <p className="text-gray-600 mt-1">
+          {property.city}, {property.country}
+        </p>
       </div>
     </div>
   );

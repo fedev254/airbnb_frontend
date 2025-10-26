@@ -28,21 +28,39 @@ export default function Navbar() {
           
           {isCustomer && (
             // --- Customer-specific links ---
-            <Link to="/my-bookings" className="text-gray-600 hover:text-gray-800">My Bookings</Link>
+            <Link to="/my-account/bookings" className="text-gray-600 hover:text-gray-800">
+              My Account
+            </Link>
           )}
 
           {isHost && (
             // --- Host-specific links ---
-            <Link to="/host/dashboard" className="font-semibold text-blue-600 hover:text-blue-800">Host Dashboard</Link>
+            <>
+              <Link 
+                to="/host/dashboard" 
+                className="font-semibold text-blue-600 hover:text-blue-800"
+              >
+                Dashboard
+              </Link>
+              <Link to="/host/reviews" className="text-gray-600 hover:text-gray-800">Reviews</Link>
+              <Link to="/host/bookings">Bookings</Link>
+              {/* 👇 NEW: My Profile link for hosts */}
+              <Link 
+                to="/host/profile" 
+                className="text-gray-600 hover:text-gray-800"
+              >
+                My Profile
+              </Link>
+            </>
           )}
 
           {user ? (
             // --- Links for any logged-in user ---
             <>
-              <span className="text-gray-700">Welcome, {user.username}!</span>
+              {/* Removed the "Welcome" text as the Profile link replaces it */}
               <button
                 onClick={handleLogout}
-                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
+                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
               >
                 Logout
               </button>
@@ -50,8 +68,13 @@ export default function Navbar() {
           ) : (
             // --- Links for logged-out users ---
             <>
-              <Link to="/login" className="text-gray-600 hover:text-gray-800">Login</Link>
-              <Link to="/register" className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+              <Link to="/login" className="text-gray-600 hover:text-gray-800">
+                Login
+              </Link>
+              <Link 
+                to="/register" 
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+              >
                 Sign Up
               </Link>
             </>
